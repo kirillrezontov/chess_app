@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>chess // client</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">chess<span class="brand-slash">//</span>client</div>
+    <div class="conn-status" id="connStatus" data-state="disconnected">
+      <span class="dot"></span><span class="conn-label">disconnected</span>
+    </div>
+    <div class="session" id="sessionInfo">
+      <span id="userLabel">guest</span>
+      <button id="logoutBtn" class="btn-ghost" hidden>log out</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ==================== AUTH VIEW ==================== -->
+    <section class="view" id="view-auth">
+      <div class="panel auth-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="login">log in</button>
+          <button class="tab" data-tab="register">register</button>
+        </div>
+
+        <form id="loginForm" class="form" data-form="login">
+          <label>username<input type="text" name="username" required autocomplete="username"></label>
+          <label>password<input type="password" name="password" required autocomplete="current-password"></label>
+          <button type="submit" class="btn-primary">log in</button>
+          <p class="form-error" id="loginError"></p>
+        </form>
+
+        <form id="registerForm" class="form" data-form="register" hidden>
+          <label>username<input type="text" name="username" required minlength="3"></label>
+          <label>email<input type="email" name="email" required></label>
+          <label>password<input type="password" name="password" required minlength="8"></label>
+          <button type="submit" class="btn-primary">create account</button>
+          <p class="form-error" id="registerError"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ==================== LOBBY VIEW ==================== -->
+    <section class="view" id="view-lobby" hidden>
+      <div class="panel lobby-panel">
+        <h1 class="panel-title">find a game</h1>
+
+        <div class="queue-controls">
+          <label>time control
+            <select id="timeControlSelect">
+              <option value="180:0">3+0 blitz</option>
+              <option value="300:0" selected>5+0 blitz</option>
+              <option value="300:3">5+3 blitz</option>
+              <option value="600:0">10+0 rapid</option>
+              <option value="900:10">15+10 rapid</option>
+            </select>
+          </label>
+          <button id="joinQueueBtn" class="btn-primary">find opponent</button>
+          <button id="cancelQueueBtn" class="btn-ghost" hidden>cancel</button>
+        </div>
+
+        <p class="queue-status" id="queueStatus"></p>
+      </div>
+
+      <div class="panel side-panel">
+        <h2 class="panel-subtitle">leaderboard</h2>
+        <table class="leaderboard" id="leaderboardTable">
+          <thead><tr><th>player</th><th>rating</th><th>w</th><th>l</th><th>d</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel side-panel">
+        <h2 class="panel-subtitle">recent games</h2>
+        <ul class="history-list" id="historyList"></ul>
+      </div>
+    </section>
+
+    <!-- ==================== GAME VIEW ==================== -->
+    <section class="view" id="view-game" hidden>
+
+      <div class="game-status-strip" id="statusStrip">
+        <span class="status-item" id="fenDisplay">fen: —</span>
+        <span class="status-item" id="turnDisplay">turn: —</span>
+        <span class="status-item status-check" id="checkDisplay" hidden>check</span>
+      </div>
+
+      <div class="board-column">
+        <div class="player-tag player-tag--top" id="topPlayerTag">
+          <span class="player-name">opponent</span>
+          <span class="clock" id="topClock">05:00</span>
+        </div>
+
+        <div class="board-wrap">
+          <div class="board" id="board"></div>
+        </div>
+
+        <div class="player-tag player-tag--bottom" id="bottomPlayerTag">
+          <span class="player-name">you</span>
+          <span class="clock" id="bottomClock">05:00</span>
+        </div>
+      </div>
+
+      <div class="panel game-side-panel">
+        <h2 class="panel-subtitle">moves</h2>
+        <ol class="move-list" id="moveList"></ol>
+
+        <div class="game-actions">
+          <button id="resignBtn" class="btn-danger">resign</button>
+          <button id="offerDrawBtn" class="btn-ghost">offer draw</button>
+        </div>
+
+        <div class="game-result" id="gameResult" hidden></div>
+        <button id="backToLobbyBtn" class="btn-primary" hidden>back to lobby</button>
+      </div>
+
+      <!-- Promotion choice — purely presentational, backend enforces legality -->
+      <div class="promo-overlay" id="promoOverlay" hidden>
+        <div class="promo-panel">
+          <p>promote to</p>
+          <div class="promo-choices">
+            <button data-piece="q">Q</button>
+            <button data-piece="r">R</button>
+            <button data-piece="b">B</button>
+            <button data-piece="n">N</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/board.js"></script>
+<script src="js/game.js"></script>
+<script src="js/lobby.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
