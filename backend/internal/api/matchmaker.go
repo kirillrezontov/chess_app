@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"sync"
 	"time"
 
@@ -82,7 +83,9 @@ func (m *Matchmaker) loop() {
 func (m *Matchmaker) tryMatch() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
+	for i := 0; i < len(m.waiting); i++ {
+		log.Printf("%d ", m.waiting[i].UserID)
+	}
 	matchedIdx := map[int]bool{}
 	for i := 0; i < len(m.waiting); i++ {
 		if matchedIdx[i] {
