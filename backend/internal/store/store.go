@@ -82,7 +82,7 @@ func (s *Store) UpdateRating(userID int64, newRating int) error {
 	return err
 }
 
-// ---- Games ----
+// ---- Games (internal, used by game sessions) ----
 
 type GameRecord struct {
 	ID          int64
@@ -126,7 +126,7 @@ func (s *Store) GetGame(gameID int64) (*GameRecord, error) {
 	g := &GameRecord{}
 	err := s.db.QueryRow(
 		`SELECT id, white_id, black_id, status, coalesce(outcome, ''), coalesce(final_fen, ''),
-		        initial_time_sec, increment_sec, created_at, finished_at
+				initial_time_sec, increment_sec, created_at, finished_at
 		 FROM games WHERE id = $1`, gameID,
 	).Scan(&g.ID, &g.WhiteID, &g.BlackID, &g.Status, &g.Outcome, &g.FinalFEN,
 		&g.InitialTime, &g.Increment, &g.CreatedAt, &g.FinishedAt)
@@ -136,24 +136,88 @@ func (s *Store) GetGame(gameID int64) (*GameRecord, error) {
 	return g, err
 }
 
-func (s *Store) UserGameHistory(userID int64, limit int) ([]GameRecord, error) {
-	rows, err := s.db.Query(
-		`SELECT id, white_id, black_id, status, coalesce(outcome, ''), coalesce(final_fen, ''),
-		        initial_time_sec, increment_sec, created_at, finished_at
-		 FROM games WHERE white_id = $1 OR black_id = $1
-		 ORDER BY created_at DESC LIMIT $2`, userID, limit)
+// ---- API response types (no user IDs exposed) ----
+
+// GameInfo is returned by GET /api/games/{id}. Contains only the
+// information the authenticated player needs — their colour and the
+// opponent's username. No other player's ID is ever leaked.
+type GameInfo struct {
+	ID             int64      `json:"id"`
+	YourColor      string     `json:"your_color"`       // "white" | "black"
+	OpponentName   string     `json:"opponent_username"`
+	Outcome        string     `json:"outcome"`
+	InitialTimeSec int        `json:"initial_time_sec"`
+	IncrementSec   int        `json:"increment_sec"`
+	CreatedAt      *time.Time `json:"created_at"`
+}
+
+// GetGameInfo returns a GameInfo for the given player. It computes
+// your_color from the JWT user_id and fetches the opponent's username
+// via a single query with JOINs — no user IDs are exposed.
+func (s *Store) GetGameInfo(gameID, userID int64) (*GameInfo, error) {
+	g := &GameInfo{}
+	err := s.db.QueryRow(`
+		SELECT
+			g.id,
+			CASE WHEN g.white_id = $2 THEN 'white' ELSE 'black' END,
+			coalesce(CASE WHEN g.white_id = $2 THEN ub.username ELSE uw.username END, 'Opponent'),
+			coalesce(g.outcome, ''),
+			g.initial_time_sec,
+			g.increment_sec,
+			g.created_at
+		FROM games g
+		LEFT JOIN users uw ON uw.id = g.white_id
+		LEFT JOIN users ub ON ub.id = g.black_id
+		WHERE g.id = $1`, gameID, userID,
+	).Scan(&g.ID, &g.YourColor, &g.OpponentName, &g.Outcome,
+		&g.InitialTimeSec, &g.IncrementSec, &g.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return g, err
+}
+
+// HistoryEntry is one row in the game-history list. No IDs are exposed.
+type HistoryEntry struct {
+	ID             int64      `json:"id"`
+	YourColor      string     `json:"your_color"`
+	OpponentName   string     `json:"opponent_username"`
+	Outcome        string     `json:"outcome"`
+	InitialTimeSec int        `json:"initial_time_sec"`
+	IncrementSec   int        `json:"increment_sec"`
+	CreatedAt      *time.Time `json:"created_at"`
+}
+
+// UserGameHistory returns the recent games for a player with opponent
+// usernames and the player's colour in each game. No other player IDs.
+func (s *Store) UserGameHistory(userID int64, limit int) ([]HistoryEntry, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			g.id,
+			CASE WHEN g.white_id = $1 THEN 'white' ELSE 'black' END,
+			coalesce(CASE WHEN g.white_id = $1 THEN ub.username ELSE uw.username END, 'Opponent'),
+			coalesce(g.outcome, ''),
+			g.initial_time_sec,
+			g.increment_sec,
+			g.created_at
+		FROM games g
+		LEFT JOIN users uw ON uw.id = g.white_id
+		LEFT JOIN users ub ON ub.id = g.black_id
+		WHERE g.white_id = $1 OR g.black_id = $1
+		ORDER BY g.created_at DESC
+		LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []GameRecord
+	out := make([]HistoryEntry, 0, 16)
 	for rows.Next() {
-		var g GameRecord
-		if err := rows.Scan(&g.ID, &g.WhiteID, &g.BlackID, &g.Status, &g.Outcome, &g.FinalFEN,
-			&g.InitialTime, &g.Increment, &g.CreatedAt, &g.FinishedAt); err != nil {
+		var e HistoryEntry
+		if err := rows.Scan(&e.ID, &e.YourColor, &e.OpponentName, &e.Outcome,
+			&e.InitialTimeSec, &e.IncrementSec, &e.CreatedAt); err != nil {
 			return nil, err
 		}
-		out = append(out, g)
+		out = append(out, e)
 	}
 	return out, rows.Err()
 }
@@ -161,31 +225,33 @@ func (s *Store) UserGameHistory(userID int64, limit int) ([]GameRecord, error) {
 // ---- Leaderboard ----
 
 type LeaderboardEntry struct {
-	Username string
-	Rating   int
-	Wins     int
-	Losses   int
-	Draws    int
+	Username string `json:"username"`
+	Rating   int    `json:"rating"`
+	Wins     int    `json:"wins"`
+	Losses   int    `json:"losses"`
+	Draws    int    `json:"draws"`
 }
 
 func (s *Store) Leaderboard(limit int) ([]LeaderboardEntry, error) {
 	rows, err := s.db.Query(
 		`SELECT u.username, u.rating,
-		        count(*) FILTER (WHERE (g.white_id = u.id AND g.outcome = 'white_win')
-		                          OR (g.black_id = u.id AND g.outcome = 'black_win')) AS wins,
-		        count(*) FILTER (WHERE (g.white_id = u.id AND g.outcome = 'black_win')
-		                          OR (g.black_id = u.id AND g.outcome = 'white_win')) AS losses,
-		        count(*) FILTER (WHERE g.outcome = 'draw') AS draws
+				count(*) FILTER (WHERE (g.white_id = u.id AND g.outcome = 'white_win')
+				                  OR (g.black_id = u.id AND g.outcome = 'black_win')) AS wins,
+				count(*) FILTER (WHERE (g.white_id = u.id AND g.outcome = 'black_win')
+				                  OR (g.black_id = u.id AND g.outcome = 'white_win')) AS losses,
+				count(*) FILTER (WHERE g.outcome = 'draw'
+				                  AND (g.white_id = u.id OR g.black_id = u.id)) AS draws
 		 FROM users u
 		 LEFT JOIN games g ON g.white_id = u.id OR g.black_id = u.id
 		 GROUP BY u.id, u.username, u.rating
+		 HAVING count(g.id) > 0
 		 ORDER BY u.rating DESC
 		 LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []LeaderboardEntry
+	out := make([]LeaderboardEntry, 0, 16)
 	for rows.Next() {
 		var e LeaderboardEntry
 		if err := rows.Scan(&e.Username, &e.Rating, &e.Wins, &e.Losses, &e.Draws); err != nil {

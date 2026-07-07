@@ -1,0 +1,309 @@
+/* ────────── Game Screen ────────── */
+.game-screen {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1020px;
+  margin: 0 auto 20px;
+}
+.game-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
+.game-layout {
+  display: flex;
+  gap: 24px;
+  max-width: 1020px;
+  margin: 0 auto;
+  align-items: flex-start;
+}
+
+/* ────────── Board ────────── */
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, var(--sq));
+  grid-template-rows: repeat(8, var(--sq));
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.sq {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter 0.1s;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1;
+  color: inherit;
+  background: none;
+}
+.sq:hover {
+  filter: brightness(1.1);
+}
+
+.sq-light { background: var(--board-light); }
+.sq-dark  { background: var(--board-dark); }
+
+.sq-selected {
+  background: rgba(255, 255, 0, 0.45) !important;
+}
+
+.sq-lastmove {
+  background: rgba(155, 199, 0, 0.41) !important;
+}
+
+.sq-check::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 0, 0, 1) 0%,
+    rgba(231, 0, 0, 1) 25%,
+    rgba(169, 0, 0, 0) 89%
+  );
+  pointer-events: none;
+}
+
+.piece {
+  font-size: calc(var(--sq) * 0.78);
+  line-height: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  user-select: none;
+}
+
+.coord {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+.coord-rank {
+  top: 2px;
+  left: 3px;
+}
+.coord-file {
+  bottom: 1px;
+  right: 3px;
+}
+.sq-light .coord { color: var(--board-dark); }
+.sq-dark  .coord { color: var(--board-light); }
+
+/* ────────── Game Sidebar ────────── */
+.game-sidebar {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ────────── Player Bars ────────── */
+.player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.2s;
+}
+.player-bar.active {
+  border-color: var(--accent);
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.color-dot[data-color='white'] { background: #f0f0f0; }
+.color-dot[data-color='black'] { background: #333; }
+
+.player-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-bright);
+}
+
+.clock {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-bright);
+  min-width: 80px;
+  text-align: right;
+  letter-spacing: -0.5px;
+}
+.clock-low {
+  color: var(--accent);
+  animation: pulse-clock 1s ease-in-out infinite;
+}
+@keyframes pulse-clock {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ────────── Status Bar ────────── */
+.status-bar {
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.status-over {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.status-error {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(233, 69, 96, 0.08);
+}
+
+/* ────────── Game Controls ────────── */
+.game-controls {
+  display: flex;
+  gap: 8px;
+}
+.game-controls .btn {
+  flex: 1;
+}
+
+/* ────────── Move List ────────── */
+.movelist-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.movelist-card h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.movelist-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.movelist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+}
+.movelist-table td {
+  padding: 3px 6px;
+}
+.move-num {
+  color: var(--text-dim);
+  width: 30px;
+  text-align: right;
+}
+.move-w, .move-b {
+  color: var(--text);
+}
+
+/* ────────── Promotion Dialog ────────── */
+.promo-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.promo-card {
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 24px 32px;
+  text-align: center;
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.promo-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: 16px;
+}
+
+.promo-options {
+  display: flex;
+  gap: 8px;
+}
+
+.promo-btn {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  color: inherit;
+}
+.promo-btn:hover {
+  border-color: var(--accent);
+  background: rgba(233, 69, 96, 0.1);
+  transform: scale(1.08);
+}
+
+/* ────────── Responsive ────────── */
+@media (max-width: 800px) {
+  .game-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+  .game-sidebar {
+    width: 100%;
+    max-width: calc(var(--sq) * 8 + 4px);
+  }
+}

@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -132,14 +133,18 @@ func (s *Server) QueueStatus(w http.ResponseWriter, r *http.Request) {
 
 // ---- Games ----
 
+// GetGame returns the game info for the authenticated player.
+// It uses the JWT to determine the player's colour and only exposes
+// the opponent's username — no other player's ID is ever sent.
 func (s *Server) GetGame(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromContext(r)
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid game id")
 		return
 	}
-	g, err := s.Store.GetGame(id)
+	g, err := s.Store.GetGameInfo(id, claims.UserID)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "game not found")
 		return
@@ -147,12 +152,19 @@ func (s *Server) GetGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, g)
 }
 
+// GameHistory returns the authenticated player's recent games.
+// Each entry includes the opponent's username and the player's colour
+// in that game — no other player IDs are exposed.
 func (s *Server) GameHistory(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromContext(r)
 	games, err := s.Store.UserGameHistory(claims.UserID, 50)
 	if err != nil {
+		log.Printf("history error: %v", err)
 		writeErr(w, http.StatusInternalServerError, "could not load history")
 		return
+	}
+	if games == nil {
+		games = make([]store.HistoryEntry, 0)
 	}
 	writeJSON(w, http.StatusOK, games)
 }
@@ -160,8 +172,12 @@ func (s *Server) GameHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.Store.Leaderboard(100)
 	if err != nil {
+		log.Printf("leaderboard error: %v", err)
 		writeErr(w, http.StatusInternalServerError, "could not load leaderboard")
 		return
+	}
+	if entries == nil {
+		entries = make([]store.LeaderboardEntry, 0)
 	}
 	writeJSON(w, http.StatusOK, entries)
 }
