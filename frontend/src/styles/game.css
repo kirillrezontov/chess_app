@@ -297,7 +297,7 @@
 }
 .promo-btn:hover {
   border-color: var(--accent);
-  background: rgba(233, 69, 96, 0.1);
+  background: rgba(34, 217, 127, 0.1);
   transform: scale(1.08);
 }
 

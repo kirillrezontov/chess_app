@@ -8,20 +8,20 @@
 }
 
 :root {
-  --bg: #0b0e14;
-  --surface: #131720;
-  --surface-hover: #1a1f2e;
-  --border: #1e2433;
-  --border-active: #3d4663;
+  --bg: #0a0f1a;
+  --surface: #111827;
+  --surface-hover: #1a2332;
+  --border: #1e293b;
+  --border-active: #334155;
   --text: #c8cdd8;
   --text-bright: #eef0f4;
   --text-dim: #6b7280;
-  --accent: #e94560;
-  --accent-hover: #ff6b81;
-  --green: #4caf50;
+  --accent: #40961b;
+  --accent-hover: #52c681;
+  --green: #22d97f;
   --orange: #ff9800;
   --board-light: #ebecd0;
-  --board-dark: #779556;
+  --board-dark: #2d6a4f;
   --sq: 64px;
   --radius: 8px;
   --radius-lg: 12px;
