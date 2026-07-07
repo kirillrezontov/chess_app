@@ -5,35 +5,28 @@ interface PromotionDialogProps {
   onSelect: (piece: 'q' | 'r' | 'b' | 'n') => void;
 }
 
-const PIECES: Record<Color, { key: string; char: string }[]> = {
-  white: [
-    { key: 'q', char: '♕' },
-    { key: 'r', char: '♖' },
-    { key: 'b', char: '♗' },
-    { key: 'n', char: '♘' },
-  ],
-  black: [
-    { key: 'q', char: '♛' },
-    { key: 'r', char: '♜' },
-    { key: 'b', char: '♝' },
-    { key: 'n', char: '♞' },
-  ],
-};
-
 export function PromotionDialog({ color, onSelect }: PromotionDialogProps) {
+  const prefix = color === 'white' ? 'w' : 'b';
+  const pieces: { key: 'q' | 'r' | 'b' | 'n'; file: string }[] = [
+    { key: 'q', file: `/pieces/${prefix}Q.svg` },
+    { key: 'r', file: `/pieces/${prefix}R.svg` },
+    { key: 'b', file: `/pieces/${prefix}B.svg` },
+    { key: 'n', file: `/pieces/${prefix}N.svg` },
+  ];
+
   return (
     <div className="promo-overlay">
       <div className="promo-card">
         <h3>Promote to</h3>
         <div className="promo-options">
-          {PIECES[color].map(p => (
+          {pieces.map(p => (
             <button
               key={p.key}
               className="promo-btn"
-              onClick={() => onSelect(p.key as 'q' | 'r' | 'b' | 'n')}
+              onClick={() => onSelect(p.key)}
               type="button"
             >
-              {p.char}
+              <img src={p.file} alt={p.key} draggable={false} />
             </button>
           ))}
         </div>

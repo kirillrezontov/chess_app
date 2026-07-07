@@ -20,6 +20,7 @@ export function GameScreen() {
   const { state, send } = useGameWebSocket(gameId, token);
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [selectedPiece, setSelectedPiece] = useState<string>('');
   const [pendingPromo, setPendingPromo] = useState<PendingPromo | null>(null);
   const [opponentName, setOpponentName] = useState('Opponent');
 
@@ -42,9 +43,11 @@ export function GameScreen() {
     });
   }, [gameId, setMyColor]);
 
+  // Only returns true if the PIECE on `from` is a pawn moving to the last rank.
   const isPawnPromotion = useCallback(
-    (_from: string, to: string): boolean => {
+    (piece: string, to: string): boolean => {
       if (!myColor) return false;
+      if (piece.toLowerCase() !== 'p') return false; // Only pawns promote
       const toRow = 8 - parseInt(to[1], 10);
       if (myColor === 'white' && toRow === 0) return true;
       if (myColor === 'black' && toRow === 7) return true;
@@ -61,15 +64,19 @@ export function GameScreen() {
       if (selectedSquare) {
         if (square === selectedSquare) {
           setSelectedSquare(null);
+          setSelectedPiece('');
           return;
         }
-        if (isPawnPromotion(selectedSquare, square)) {
+        // Check promotion using the piece that was selected (stored in selectedPiece)
+        if (isPawnPromotion(selectedPiece, square)) {
           setPendingPromo({ from: selectedSquare, to: square });
           setSelectedSquare(null);
+          setSelectedPiece('');
           return;
         }
         send({ type: 'move', from: selectedSquare, to: square, promotion: '' });
         setSelectedSquare(null);
+        setSelectedPiece('');
       } else {
         if (!piece) return;
         const pieceIsWhite = isWhitePiece(piece);
@@ -78,10 +85,11 @@ export function GameScreen() {
           (myColor === 'black' && !pieceIsWhite)
         ) {
           setSelectedSquare(square);
+          setSelectedPiece(piece);
         }
       }
     },
-    [selectedSquare, myColor, state.turn, state.outcome, pendingPromo, send, isPawnPromotion],
+    [selectedSquare, selectedPiece, myColor, state.turn, state.outcome, pendingPromo, send, isPawnPromotion],
   );
 
   const handlePromotion = useCallback(

@@ -63,6 +63,10 @@ type Player struct {
 	Color engine.Color
 }
 
+// Subscriber is a per-connection channel for fan-out delivery.
+// Exported so the ws package can use it.
+type Subscriber chan Snapshot
+
 // Session owns one game's authoritative state. All access goes through the
 // cmds channel so there is exactly one goroutine ever touching Board.
 type Session struct {
@@ -78,9 +82,20 @@ type Session struct {
 	lastTick   time.Time
 	increment  time.Duration
 
-	cmds      chan interface{}
-	Broadcast chan Snapshot // fan-out to WS hub subscribers for this game
-	done      chan struct{}
+	cmds chan interface{}
+	done chan struct{}
+
+	// Subscriber fan-out (replaces single Broadcast channel).
+	// subscribeCh / unsubscribeCh are used by hub goroutines to register
+	// their per-connection delivery channels. The Run() loop processes
+	// these so all subscriber map access stays on the single owner goroutine.
+	subscribers   map[Subscriber]struct{}
+	subscribeCh   chan Subscriber
+	unsubscribeCh chan Subscriber
+
+	// lastMove persists the most recent move so that reconnecting clients
+	// get the highlight via CurrentSnapshot().
+	lastMove *LastMove
 
 	mu      sync.Mutex // guards Outcome only, for concurrent reads from HTTP handlers
 	outcome Outcome
@@ -98,17 +113,19 @@ type drawOfferCmd struct {
 
 func NewSession(id int64, whiteID, blackID int64, initial time.Duration, increment time.Duration, st *store.Store) *Session {
 	return &Session{
-		ID:         id,
-		White:      Player{ID: whiteID, Color: engine.White},
-		Black:      Player{ID: blackID, Color: engine.Black},
-		board:      engine.NewBoard(),
-		whiteClock: initial,
-		blackClock: initial,
-		increment:  increment,
-		cmds:       make(chan interface{}, 16),
-		Broadcast:  make(chan Snapshot, 16),
-		done:       make(chan struct{}),
-		store:      st,
+		ID:            id,
+		White:         Player{ID: whiteID, Color: engine.White},
+		Black:         Player{ID: blackID, Color: engine.Black},
+		board:         engine.NewBoard(),
+		whiteClock:    initial,
+		blackClock:    initial,
+		increment:     increment,
+		cmds:          make(chan interface{}, 16),
+		done:          make(chan struct{}),
+		store:         st,
+		subscribers:   make(map[Subscriber]struct{}),
+		subscribeCh:   make(chan Subscriber, 4),
+		unsubscribeCh: make(chan Subscriber, 4),
 	}
 }
 
@@ -130,15 +147,38 @@ func (s *Session) Run() {
 			case drawOfferCmd:
 				s.handleDrawOffer(c)
 			}
+		case sub := <-s.subscribeCh:
+			s.subscribers[sub] = struct{}{}
+		case sub := <-s.unsubscribeCh:
+			delete(s.subscribers, sub)
+			close(sub)
 		case <-clockTicker.C:
 			s.tickClock()
 		case <-s.done:
+			// Close all subscriber channels so writePumps exit cleanly.
+			for sub := range s.subscribers {
+				close(sub)
+			}
 			return
 		}
 	}
 }
 
 func (s *Session) Stop() { close(s.done) }
+
+// Subscribe registers a new per-connection delivery channel. Called from hub
+// goroutines; safe because it goes through subscribeCh.
+func (s *Session) Subscribe() Subscriber {
+	ch := make(Subscriber, 16)
+	s.subscribeCh <- ch
+	return ch
+}
+
+// Unsubscribe removes a per-connection delivery channel. Called from hub
+// goroutines when a WebSocket disconnects.
+func (s *Session) Unsubscribe(ch Subscriber) {
+	s.unsubscribeCh <- ch
+}
 
 // SubmitMove is the external, concurrency-safe entry point other goroutines
 // (WS read pumps) use to propose a move. It blocks until the session
@@ -192,11 +232,14 @@ func (s *Session) handleMove(req MoveRequest) {
 	s.moveLog = append(s.moveLog, req.From+req.To)
 	s.store.RecordMove(s.ID, s.board.FullmoveNum, req.From+req.To, s.board.FEN())
 
+	// Persist lastMove so reconnecting clients see the highlight.
+	s.lastMove = &LastMove{From: req.From, To: req.To}
+
 	s.applyClockIncrement(expectedColor)
 	status := s.board.Status()
 	s.updateOutcomeFromStatus(status, expectedColor)
 
-	snap := s.snapshot(&LastMove{From: req.From, To: req.To})
+	snap := s.snapshot(s.lastMove)
 	req.ReplyCh <- MoveResult{OK: true, Snapshot: snap}
 	s.publish(snap)
 
@@ -215,7 +258,7 @@ func (s *Session) handleResign(c resignCmd) {
 	}
 	s.mu.Unlock()
 	s.store.FinishGame(s.ID, string(s.outcome), s.board.FEN())
-	snap := s.snapshot(nil)
+	snap := s.snapshot(s.lastMove)
 	c.ReplyCh <- MoveResult{OK: true, Snapshot: snap}
 	s.publish(snap)
 }
@@ -228,7 +271,7 @@ func (s *Session) handleDrawOffer(c drawOfferCmd) {
 	s.outcome = OutcomeDraw
 	s.mu.Unlock()
 	s.store.FinishGame(s.ID, string(s.outcome), s.board.FEN())
-	snap := s.snapshot(nil)
+	snap := s.snapshot(s.lastMove)
 	c.ReplyCh <- MoveResult{OK: true, Snapshot: snap}
 	s.publish(snap)
 }
@@ -267,7 +310,7 @@ func (s *Session) tickClock() {
 	s.mu.Unlock()
 	if outcomeSet {
 		s.store.FinishGame(s.ID, string(s.outcome), s.board.FEN())
-		s.publish(s.snapshot(nil))
+		s.publish(s.snapshot(s.lastMove))
 	}
 }
 
@@ -297,11 +340,15 @@ func (s *Session) snapshot(last *LastMove) Snapshot {
 	}
 }
 
+// publish fans out the snapshot to ALL subscribed connections.
+// Must only be called from the Run() goroutine.
 func (s *Session) publish(snap Snapshot) {
-	select {
-	case s.Broadcast <- snap:
-	default:
-		// drop if no listener keeping up; hub should always be draining this
+	for sub := range s.subscribers {
+		select {
+		case sub <- snap:
+		default:
+			// subscriber buffer full — drop to avoid blocking the game loop
+		}
 	}
 }
 
@@ -320,6 +367,8 @@ func parsePromotion(p string) engine.PieceType {
 	}
 }
 
+// CurrentSnapshot returns the current game state including the persisted
+// lastMove, so reconnecting clients see the move highlight.
 func (s *Session) CurrentSnapshot() Snapshot {
-	return s.snapshot(nil)
+	return s.snapshot(s.lastMove)
 }

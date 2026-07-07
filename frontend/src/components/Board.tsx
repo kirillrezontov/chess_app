@@ -2,9 +2,22 @@ import { useMemo } from 'react';
 import { parseFEN, toSquareName, type BoardGrid } from '@/utils/fen';
 import type { Color, LastMove } from '@/types';
 
-const PIECE_CHAR: Record<string, string> = {
-  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
-  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
+// Map FEN piece characters to SVG file names.
+// To use custom textures, replace these SVG files in public/pieces/
+// (you can also swap the extension — just update the path here).
+const PIECE_IMAGE: Record<string, string> = {
+  K: '/pieces/wK.svg',
+  Q: '/pieces/wQ.svg',
+  R: '/pieces/wR.svg',
+  B: '/pieces/wB.svg',
+  N: '/pieces/wN.svg',
+  P: '/pieces/wP.svg',
+  k: '/pieces/bK.svg',
+  q: '/pieces/bQ.svg',
+  r: '/pieces/bR.svg',
+  b: '/pieces/bB.svg',
+  n: '/pieces/bN.svg',
+  p: '/pieces/bP.svg',
 };
 
 export interface BoardProps {
@@ -29,6 +42,7 @@ export function Board({
   onSquareClick,
 }: BoardProps) {
   const grid: BoardGrid = useMemo(() => parseFEN(fen), [fen]);
+  const flipped = myColor === 'black';
 
   // Find king position for check highlight
   const kingPos = useMemo(() => {
@@ -41,8 +55,13 @@ export function Board({
   }, [grid, inCheck, myColor]);
 
   const squares: JSX.Element[] = [];
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
+  for (let ri = 0; ri < 8; ri++) {
+    for (let ci = 0; ci < 8; ci++) {
+      // Map visual position to actual board coordinates.
+      // When flipped, row 0 visually shows rank 1 (board row 7).
+      const r = flipped ? 7 - ri : ri;
+      const c = flipped ? 7 - ci : ci;
+
       const isLight = (r + c) % 2 === 0;
       const name = toSquareName(r, c);
       const piece = grid[r][c];
@@ -61,15 +80,32 @@ export function Board({
 
       squares.push(
         <button
-          key={name}
+          key={`${ri}-${ci}`}
           className={className}
           data-square={name}
           onClick={() => clickable && onSquareClick(name, piece)}
           type="button"
         >
-          {piece && <span className="piece">{PIECE_CHAR[piece] || piece}</span>}
-          {c === 0 && <span className="coord coord-rank">{8 - r}</span>}
-          {r === 7 && <span className="coord coord-file">{String.fromCharCode(97 + c)}</span>}
+          {piece && (
+            <img
+              className="piece-img"
+              src={PIECE_IMAGE[piece] || `/pieces/${piece}.svg`}
+              alt={piece}
+              draggable={false}
+            />
+          )}
+          {/* Rank label: show on the visually leftmost column */}
+          {ci === 0 && (
+            <span className={`coord coord-rank ${isLight ? 'coord-on-light' : 'coord-on-dark'}`}>
+              {8 - r}
+            </span>
+          )}
+          {/* File label: show on the visually bottom row */}
+          {ri === 7 && (
+            <span className={`coord coord-file ${isLight ? 'coord-on-light' : 'coord-on-dark'}`}>
+              {String.fromCharCode(97 + c)}
+            </span>
+          )}
         </button>,
       );
     }

@@ -79,12 +79,13 @@
   pointer-events: none;
 }
 
-.piece {
-  font-size: calc(var(--sq) * 0.78);
-  line-height: 1;
+.piece-img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
   user-select: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
 }
 
 .coord {
@@ -102,8 +103,8 @@
   bottom: 1px;
   right: 3px;
 }
-.sq-light .coord { color: var(--board-dark); }
-.sq-dark  .coord { color: var(--board-light); }
+.coord-on-light { color: var(--board-dark); }
+.coord-on-dark  { color: var(--board-light); }
 
 /* ────────── Game Sidebar ────────── */
 .game-sidebar {
@@ -277,18 +278,22 @@
 }
 
 .promo-btn {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 42px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.15s;
-  color: inherit;
+  padding: 8px;
+}
+.promo-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .promo-btn:hover {
   border-color: var(--accent);

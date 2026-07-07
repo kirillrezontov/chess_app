@@ -1,8 +1,8 @@
 // Package ws bridges WebSocket connections to game sessions. Each connection
 // gets its own read-pump goroutine; each subscription gets its own
-// write-pump goroutine draining a Session's Broadcast channel. No chess
-// logic lives here — this package only moves bytes between the socket and
-// internal/game.
+// write-pump goroutine draining a per-connection Subscriber channel.
+// No chess logic lives here — this package only moves bytes between
+// the socket and internal/game.
 package ws
 
 import (
@@ -70,24 +70,32 @@ func (h *Hub) ServeGame(w http.ResponseWriter, r *http.Request, gameID int64) {
 	}
 	defer conn.Close()
 
+	// Subscribe to this session's fan-out — each connection gets its own channel.
+	sub := sess.Subscribe()
+	defer sess.Unsubscribe(sub)
+
+	// Send initial snapshot (includes persisted lastMove).
 	snap := sess.CurrentSnapshot()
 	initMsg := ServerMessage{Type: "snapshot", State: &snap}
 	initBytes, _ := json.Marshal(initMsg)
 	conn.WriteMessage(websocket.TextMessage, initBytes)
 
 	stopWriter := make(chan struct{})
-	go h.writePump(conn, sess, stopWriter)
+	go h.writePump(conn, sub, stopWriter)
 	h.readPump(conn, sess, claims.UserID, stopWriter)
 }
 
-func (h *Hub) writePump(conn *websocket.Conn, sess *game.Session, stop chan struct{}) {
+// writePump drains the per-connection subscriber channel and writes to
+// the WebSocket. Each connection has its own channel, so every subscriber
+// receives every published snapshot (proper fan-out).
+func (h *Hub) writePump(conn *websocket.Conn, sub game.Subscriber, stop chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second) // keepalive ping
 	defer ticker.Stop()
 	for {
 		select {
-		case snap, ok := <-sess.Broadcast:
+		case snap, ok := <-sub:
 			if !ok {
-				return
+				return // channel closed — session stopped or unsubscribed
 			}
 			msg := ServerMessage{Type: "snapshot", State: &snap}
 			b, _ := json.Marshal(msg)
@@ -139,8 +147,8 @@ func (h *Hub) readPump(conn *websocket.Conn, sess *game.Session, playerID int64,
 			h.sendError(conn, result.Error)
 			continue
 		}
-		// Successful moves are also delivered via Broadcast to all
-		// subscribers (including this connection) — no need to double-send.
+		// Successful moves are also delivered via the subscriber fan-out
+		// to all connections (including this one) — no need to double-send.
 	}
 }
 
