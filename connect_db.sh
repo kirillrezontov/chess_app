@@ -1,0 +1,1 @@
+docker compose exec db psql -U chess -d chess

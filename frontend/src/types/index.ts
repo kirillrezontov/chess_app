@@ -38,7 +38,7 @@ export interface QueueStatusResponse {
   game_id?: number;
 }
 
-/* ────────── Game API responses (no other player IDs) ────────── */
+/* ────────── Game API responses ────────── */
 
 export interface GameInfo {
   id: number;
@@ -81,6 +81,8 @@ export interface ServerSnapshot {
   black_clock_ms: number;
   move_list: string[];
   in_check: boolean;
+  draw_offered?: string;
+  loser_king_sq?: string;
 }
 
 export type Outcome = '' | 'white_win' | 'black_win' | 'draw' | 'abandoned';
@@ -91,9 +93,12 @@ export interface LastMove {
 }
 
 export interface ServerMessage {
-  type: 'snapshot' | 'error';
+  type: 'snapshot' | 'error' | 'legal_targets';
   state?: ServerSnapshot;
   error?: string;
+  from?: string;
+  targets?: string[];
+  captures?: string[];
 }
 
 export interface ClientMoveMessage {
@@ -107,7 +112,17 @@ export interface ClientActionMessage {
   type: 'resign' | 'offer_draw';
 }
 
-export type ClientMessage = ClientMoveMessage | ClientActionMessage;
+export interface ClientDrawResponseMessage {
+  type: 'draw_response';
+  accept: boolean;
+}
+
+export interface ClientLegalTargetsMessage {
+  type: 'legal_targets';
+  from: string;
+}
+
+export type ClientMessage = ClientMoveMessage | ClientActionMessage | ClientDrawResponseMessage | ClientLegalTargetsMessage;
 
 /* ────────── Frontend-only types ────────── */
 

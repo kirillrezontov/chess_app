@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGameWebSocket } from '@/hooks/useGameWebSocket';
 import { games } from '@/api/client';
@@ -6,6 +7,7 @@ import { Board } from './Board';
 import { ClockBar } from './ClockBar';
 import { MoveList } from './MoveList';
 import { PromotionDialog } from './PromotionDialog';
+import { DrawOfferDialog } from './DrawOfferDialog';
 import { isWhitePiece } from '@/utils/fen';
 import type { GameInfo } from '@/types';
 import '@/styles/game.css';
@@ -17,21 +19,17 @@ interface PendingPromo {
 
 export function GameScreen() {
   const { token, username, myColor, setMyColor, gameId, setScreen } = useAuth();
-  const { state, send } = useGameWebSocket(gameId, token);
+  const { state, displayClocks, legalTargets, send } = useGameWebSocket(gameId, token);
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [selectedPiece, setSelectedPiece] = useState<string>('');
   const [pendingPromo, setPendingPromo] = useState<PendingPromo | null>(null);
   const [opponentName, setOpponentName] = useState('Opponent');
 
-  // Fetch game info — backend returns your_color and opponent_username
-  // based on the JWT token, so no user IDs are needed on the frontend.
+  // Fetch game info
   useEffect(() => {
     if (!gameId) return;
-
-    // Clear stale color from a previous game
     setMyColor(null);
-
     games.get(gameId).then((g: GameInfo) => {
       console.log('[Game] fetched game info:', JSON.stringify(g));
       if (g.your_color === 'white' || g.your_color === 'black') {
@@ -43,11 +41,10 @@ export function GameScreen() {
     });
   }, [gameId, setMyColor]);
 
-  // Only returns true if the PIECE on `from` is a pawn moving to the last rank.
   const isPawnPromotion = useCallback(
     (piece: string, to: string): boolean => {
       if (!myColor) return false;
-      if (piece.toLowerCase() !== 'p') return false; // Only pawns promote
+      if (piece.toLowerCase() !== 'p') return false;
       const toRow = 8 - parseInt(to[1], 10);
       if (myColor === 'white' && toRow === 0) return true;
       if (myColor === 'black' && toRow === 7) return true;
@@ -67,7 +64,6 @@ export function GameScreen() {
           setSelectedPiece('');
           return;
         }
-        // Check promotion using the piece that was selected (stored in selectedPiece)
         if (isPawnPromotion(selectedPiece, square)) {
           setPendingPromo({ from: selectedSquare, to: square });
           setSelectedSquare(null);
@@ -86,6 +82,8 @@ export function GameScreen() {
         ) {
           setSelectedSquare(square);
           setSelectedPiece(piece);
+          // Request legal targets from server
+          send({ type: 'legal_targets', from: square });
         }
       }
     },
@@ -114,11 +112,19 @@ export function GameScreen() {
     send({ type: 'offer_draw' });
   }, [send]);
 
+  const handleDrawResponse = useCallback((accept: boolean) => {
+    send({ type: 'draw_response', accept });
+  }, [send]);
+
   const handleLeave = useCallback(() => {
     setScreen('lobby');
   }, [setScreen]);
 
   const gameOver = state.outcome !== '';
+
+  // Determine if opponent offered a draw (draw_offered is the opponent's color)
+  const opponentOfferedDraw = state.drawOffered && state.drawOffered !== myColor;
+  const iOfferedDraw = state.drawOffered === myColor;
 
   // Status text
   let statusText: string;
@@ -138,6 +144,8 @@ export function GameScreen() {
     statusText = 'Stalemate — Draw';
   } else if (state.inCheck) {
     statusText = state.turn === myColor ? 'Check — Your turn' : 'Check — Opponent thinking';
+  } else if (iOfferedDraw) {
+    statusText = 'Waiting for opponent to accept draw…';
   } else if (!state.connected) {
     statusText = 'Connecting…';
   } else {
@@ -164,25 +172,34 @@ export function GameScreen() {
           selectedSquare={selectedSquare}
           myColor={myColor}
           gameOver={gameOver}
+          loserKingSq={state.loserKingSq}
+          legalTargets={legalTargets?.targets || []}
+          legalCaptures={legalTargets?.captures || []}
           onSquareClick={handleSquareClick}
         />
 
         <div className="game-sidebar">
           <ClockBar
             name={opponentName}
-            clockMs={topIsBlack ? state.blackClockMs : state.whiteClockMs}
+            clockMs={topIsBlack ? displayClocks.black : displayClocks.white}
             color={topIsBlack ? 'black' : 'white'}
             isActive={state.turn === (topIsBlack ? 'black' : 'white') && !gameOver}
             position="top"
           />
 
-          <div className={`status-bar ${gameOver ? 'status-over' : ''} ${state.error ? 'status-error' : ''}`}>
+          <motion.div
+            className={`status-bar ${gameOver ? 'status-over' : ''} ${state.error ? 'status-error' : ''}`}
+            key={statusText}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
             {statusText}
-          </div>
+          </motion.div>
 
           <ClockBar
             name={username || 'You'}
-            clockMs={topIsBlack ? state.whiteClockMs : state.blackClockMs}
+            clockMs={topIsBlack ? displayClocks.white : displayClocks.black}
             color={topIsBlack ? 'white' : 'black'}
             isActive={state.turn === (topIsBlack ? 'white' : 'black') && !gameOver}
             position="bottom"
@@ -190,8 +207,8 @@ export function GameScreen() {
 
           {!gameOver && (
             <div className="game-controls">
-              <button className="btn btn-outline" onClick={handleDraw} type="button">
-                Offer Draw
+              <button className="btn btn-outline" onClick={handleDraw} type="button" disabled={iOfferedDraw}>
+                {iOfferedDraw ? 'Draw Sent' : 'Offer Draw'}
               </button>
               <button className="btn btn-danger" onClick={handleResign} type="button">
                 Resign
@@ -203,9 +220,20 @@ export function GameScreen() {
         </div>
       </div>
 
-      {pendingPromo && myColor && (
-        <PromotionDialog color={myColor} onSelect={handlePromotion} />
-      )}
+      <AnimatePresence>
+        {pendingPromo && myColor && (
+          <PromotionDialog color={myColor} onSelect={handlePromotion} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {opponentOfferedDraw && !gameOver && (
+          <DrawOfferDialog
+            onAccept={() => handleDrawResponse(true)}
+            onDecline={() => handleDrawResponse(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

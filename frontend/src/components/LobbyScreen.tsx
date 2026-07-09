@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { queue, games } from '@/api/client';
 import { TIME_CONTROLS, type TimeControl, type HistoryEntry, type LeaderboardEntry } from '@/types';
@@ -7,7 +8,7 @@ import '@/styles/lobby.css';
 export function LobbyScreen() {
   const { username, rating, setScreen, setGameId, logout, refreshMe } = useAuth();
 
-  const [selectedTC, setSelectedTC] = useState<TimeControl>(TIME_CONTROLS[2]); // 5+0
+  const [selectedTC, setSelectedTC] = useState<TimeControl>(TIME_CONTROLS[2]);
   const [searching, setSearching] = useState(false);
   const [queueError, setQueueError] = useState('');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -36,7 +37,7 @@ export function LobbyScreen() {
     refreshMe();
     loadHistory();
     loadLeaderboard();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -76,7 +77,6 @@ export function LobbyScreen() {
     setQueueError('');
   }, [stopPolling]);
 
-  // Cleanup on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
   const renderGameResult = (g: HistoryEntry) => {
@@ -102,49 +102,92 @@ export function LobbyScreen() {
   return (
     <div className="lobby-screen">
       <header className="lobby-header">
-        <h1 className="lobby-brand">Chess</h1>
-        <div className="lobby-user">
+        <motion.h1
+          className="lobby-brand"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          Chess
+        </motion.h1>
+        <motion.div
+          className="lobby-user"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <span className="lobby-username">{username}</span>
           <span className="lobby-rating">{rating} rating</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Logout</button>
-        </div>
+        </motion.div>
       </header>
 
       <div className="lobby-body">
-        <section className="card find-card">
+        <motion.section
+          className="card find-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
           <h2 className="card-title">Find a Game</h2>
 
           <div className="time-controls">
             {TIME_CONTROLS.map(tc => (
-              <button
+              <motion.button
                 key={tc.label}
                 className={`tc-btn ${selectedTC.label === tc.label ? 'active' : ''}`}
                 onClick={() => setSelectedTC(tc)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="button"
               >
                 {tc.label}
-              </button>
+              </motion.button>
             ))}
           </div>
 
-          {searching ? (
-            <div className="searching">
-              <div className="spinner" />
-              <span>Searching for opponent…</span>
-              <button className="btn btn-outline" onClick={cancelSearch}>
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button className="btn btn-primary btn-lg" onClick={startSearch}>
-              Find Opponent
-            </button>
-          )}
+          <AnimatePresence mode="wait">
+            {searching ? (
+              <motion.div
+                key="searching"
+                className="searching"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <div className="spinner" />
+                <span>Searching for opponent…</span>
+                <button className="btn btn-outline" onClick={cancelSearch} type="button">
+                  Cancel
+                </button>
+              </motion.div>
+            ) : (
+              <motion.button
+                key="find"
+                className="btn btn-primary btn-lg"
+                onClick={startSearch}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
+              >
+                Find Opponent
+              </motion.button>
+            )}
+          </AnimatePresence>
 
           {queueError && <p className="field-error">{queueError}</p>}
-        </section>
+        </motion.section>
 
         <aside className="lobby-sidebar">
-          <section className="card">
+          <motion.section
+            className="card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
             <h2 className="card-title">Recent Games</h2>
             {history.length === 0 ? (
               <p className="empty-text">No games yet</p>
@@ -163,9 +206,14 @@ export function LobbyScreen() {
                 ))}
               </div>
             )}
-          </section>
+          </motion.section>
 
-          <section className="card">
+          <motion.section
+            className="card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
+          >
             <h2 className="card-title">Leaderboard</h2>
             {leaderboard.length === 0 ? (
               <p className="empty-text">No players yet</p>
@@ -190,7 +238,7 @@ export function LobbyScreen() {
                 </tbody>
               </table>
             )}
-          </section>
+          </motion.section>
         </aside>
       </div>
     </div>

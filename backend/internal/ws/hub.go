@@ -1,8 +1,6 @@
 // Package ws bridges WebSocket connections to game sessions. Each connection
 // gets its own read-pump goroutine; each subscription gets its own
 // write-pump goroutine draining a per-connection Subscriber channel.
-// No chess logic lives here — this package only moves bytes between
-// the socket and internal/game.
 package ws
 
 import (
@@ -20,23 +18,26 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true }, // tighten via env allowlist in production
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 // ClientMessage is the only shape the frontend ever sends over the socket.
 type ClientMessage struct {
-	Type      string `json:"type"` // "move" | "resign" | "offer_draw"
+	Type      string `json:"type"` // "move" | "resign" | "offer_draw" | "draw_response" | "legal_targets"
 	From      string `json:"from,omitempty"`
 	To        string `json:"to,omitempty"`
 	Promotion string `json:"promotion,omitempty"`
+	Accept    bool   `json:"accept,omitempty"`
 }
 
-// ServerMessage wraps every payload pushed to the frontend so it can switch
-// on `type` without any game-rule inference.
+// ServerMessage wraps every payload pushed to the frontend.
 type ServerMessage struct {
-	Type  string         `json:"type"` // "snapshot" | "error"
-	Error string         `json:"error,omitempty"`
-	State *game.Snapshot `json:"state,omitempty"`
+	Type    string         `json:"type"` // "snapshot" | "error" | "legal_targets"
+	Error   string         `json:"error,omitempty"`
+	State   *game.Snapshot `json:"state,omitempty"`
+	From    string         `json:"from,omitempty"`
+	Targets []string       `json:"targets,omitempty"`
+	Captures []string      `json:"captures,omitempty"`
 }
 
 type Hub struct {
@@ -70,11 +71,10 @@ func (h *Hub) ServeGame(w http.ResponseWriter, r *http.Request, gameID int64) {
 	}
 	defer conn.Close()
 
-	// Subscribe to this session's fan-out — each connection gets its own channel.
 	sub := sess.Subscribe()
 	defer sess.Unsubscribe(sub)
 
-	// Send initial snapshot (includes persisted lastMove).
+	// Send initial snapshot
 	snap := sess.CurrentSnapshot()
 	initMsg := ServerMessage{Type: "snapshot", State: &snap}
 	initBytes, _ := json.Marshal(initMsg)
@@ -85,17 +85,14 @@ func (h *Hub) ServeGame(w http.ResponseWriter, r *http.Request, gameID int64) {
 	h.readPump(conn, sess, claims.UserID, stopWriter)
 }
 
-// writePump drains the per-connection subscriber channel and writes to
-// the WebSocket. Each connection has its own channel, so every subscriber
-// receives every published snapshot (proper fan-out).
 func (h *Hub) writePump(conn *websocket.Conn, sub game.Subscriber, stop chan struct{}) {
-	ticker := time.NewTicker(30 * time.Second) // keepalive ping
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case snap, ok := <-sub:
 			if !ok {
-				return // channel closed — session stopped or unsubscribed
+				return
 			}
 			msg := ServerMessage{Type: "snapshot", State: &snap}
 			b, _ := json.Marshal(msg)
@@ -117,7 +114,7 @@ func (h *Hub) readPump(conn *websocket.Conn, sess *game.Session, playerID int64,
 	for {
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			return // client disconnected; session keeps running for reconnect
+			return
 		}
 		var msg ClientMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
@@ -125,35 +122,57 @@ func (h *Hub) readPump(conn *websocket.Conn, sess *game.Session, playerID int64,
 			continue
 		}
 
-		var result game.MoveResult
 		switch msg.Type {
 		case "move":
-			result = sess.SubmitMove(game.MoveRequest{
+			result := sess.SubmitMove(game.MoveRequest{
 				PlayerID:  playerID,
 				From:      msg.From,
 				To:        msg.To,
 				Promotion: msg.Promotion,
 			})
+			if !result.OK {
+				h.sendError(conn, result.Error)
+			}
 		case "resign":
-			result = sess.Resign(playerID)
+			result := sess.Resign(playerID)
+			if !result.OK {
+				h.sendError(conn, result.Error)
+			}
 		case "offer_draw":
-			result = sess.OfferDraw(playerID)
+			result := sess.OfferDraw(playerID)
+			if !result.OK {
+				h.sendError(conn, result.Error)
+			}
+		case "draw_response":
+			result := sess.RespondDraw(playerID, msg.Accept)
+			if !result.OK {
+				h.sendError(conn, result.Error)
+			}
+		case "legal_targets":
+			result := sess.SubmitLegalTargets(msg.From, playerID)
+			if result.Error != "" {
+				h.sendError(conn, result.Error)
+			} else {
+				h.sendJSON(conn, ServerMessage{
+					Type:     "legal_targets",
+					From:     result.From,
+					Targets:  result.Targets,
+					Captures: result.Captures,
+				})
+			}
 		default:
 			h.sendError(conn, "unknown message type")
-			continue
 		}
-
-		if !result.OK {
-			h.sendError(conn, result.Error)
-			continue
-		}
-		// Successful moves are also delivered via the subscriber fan-out
-		// to all connections (including this one) — no need to double-send.
 	}
 }
 
 func (h *Hub) sendError(conn *websocket.Conn, errMsg string) {
 	msg := ServerMessage{Type: "error", Error: errMsg}
+	b, _ := json.Marshal(msg)
+	conn.WriteMessage(websocket.TextMessage, b)
+}
+
+func (h *Hub) sendJSON(conn *websocket.Conn, msg ServerMessage) {
 	b, _ := json.Marshal(msg)
 	conn.WriteMessage(websocket.TextMessage, b)
 }

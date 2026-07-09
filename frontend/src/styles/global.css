@@ -22,7 +22,8 @@
   --orange: #ff9800;
   --board-light: #ebecd0;
   --board-dark: #2d6a4f;
-  --sq: 64px;
+  --sq: min(8vw, 64px);
+  --sq-vmin: min(11vw, 64px);
   --radius: 8px;
   --radius-lg: 12px;
 }
@@ -37,6 +38,7 @@ body {
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 /* ────────── Shared Components ────────── */
@@ -191,4 +193,27 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border-active);
   border-radius: 3px;
+}
+
+/* ────────── Global responsive ────────── */
+@media (max-width: 600px) {
+  :root {
+    --radius: 6px;
+    --radius-lg: 8px;
+  }
+  .btn-lg {
+    padding: 12px 20px;
+    font-size: 15px;
+  }
+  .btn-primary {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+  .btn-outline, .btn-danger {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+  .card {
+    padding: 16px;
+  }
 }

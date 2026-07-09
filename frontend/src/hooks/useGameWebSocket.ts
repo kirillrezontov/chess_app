@@ -19,6 +19,14 @@ export interface GameState {
   inCheck: boolean;
   connected: boolean;
   error: string | null;
+  drawOffered: string | null;
+  loserKingSq: string | null;
+}
+
+export interface LegalTargets {
+  from: string;
+  targets: string[];
+  captures: string[];
 }
 
 const INITIAL: GameState = {
@@ -33,6 +41,8 @@ const INITIAL: GameState = {
   inCheck: false,
   connected: false,
   error: null,
+  drawOffered: null,
+  loserKingSq: null,
 };
 
 function snapshotToState(snap: ServerSnapshot): GameState {
@@ -48,13 +58,45 @@ function snapshotToState(snap: ServerSnapshot): GameState {
     inCheck: snap.in_check ?? false,
     connected: true,
     error: null,
+    drawOffered: snap.draw_offered ?? null,
+    loserKingSq: snap.loser_king_sq ?? null,
   };
 }
 
 export function useGameWebSocket(gameId: number | null, token: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const [state, setState] = useState<GameState>(INITIAL);
+  const [legalTargets, setLegalTargets] = useState<LegalTargets | null>(null);
   const hasConnected = useRef(false);
+
+  // Clock interpolation state
+  const clockRef = useRef<{
+    white: number;
+    black: number;
+    turn: 'white' | 'black';
+    timestamp: number;
+    outcome: Outcome;
+  } | null>(null);
+
+  const [displayClocks, setDisplayClocks] = useState({ white: 300000, black: 300000 });
+
+  // Local clock ticker — updates display every 100ms for smooth countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const c = clockRef.current;
+      if (!c || c.outcome) {
+        // Game over — use server values
+        setDisplayClocks({ white: c?.white ?? 0, black: c?.black ?? 0 });
+        return;
+      }
+      const elapsed = Date.now() - c.timestamp;
+      const isWhiteTurn = c.turn === 'white';
+      const white = isWhiteTurn ? Math.max(0, c.white - elapsed) : c.white;
+      const black = isWhiteTurn ? c.black : Math.max(0, c.black - elapsed);
+      setDisplayClocks({ white, black });
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   const send = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -68,6 +110,8 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
 
     hasConnected.current = false;
     setState(prev => ({ ...prev, connected: false, error: null }));
+    setLegalTargets(null);
+    clockRef.current = null;
 
     const url = buildGameWsUrl(gameId, token);
     console.log('[WS] connecting to', url);
@@ -85,7 +129,28 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
         const msg = JSON.parse(evt.data);
         console.log('[WS] message:', msg.type, msg.error || '');
         if (msg.type === 'snapshot' && msg.state) {
-          setState(snapshotToState(msg.state));
+          const newState = snapshotToState(msg.state);
+          setState(newState);
+          // Update clock interpolation base
+          clockRef.current = {
+            white: msg.state.white_clock_ms ?? 0,
+            black: msg.state.black_clock_ms ?? 0,
+            turn: msg.state.turn || 'white',
+            timestamp: Date.now(),
+            outcome: msg.state.outcome || '',
+          };
+          setDisplayClocks({
+            white: msg.state.white_clock_ms ?? 0,
+            black: msg.state.black_clock_ms ?? 0,
+          });
+          // Clear legal targets when board changes
+          setLegalTargets(null);
+        } else if (msg.type === 'legal_targets') {
+          setLegalTargets({
+            from: msg.from || '',
+            targets: msg.targets || [],
+            captures: msg.captures || [],
+          });
         } else if (msg.type === 'error') {
           setState(prev => ({ ...prev, error: msg.error || 'Unknown error' }));
         }
@@ -124,5 +189,5 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
     };
   }, [gameId, token]);
 
-  return { state, send };
+  return { state, displayClocks, legalTargets, send };
 }

@@ -1,6 +1,7 @@
 /* ────────── Lobby Screen ────────── */
 .lobby-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 20px;
 }
 
@@ -157,5 +158,42 @@
   }
   .lobby-sidebar {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .lobby-screen {
+    padding: 12px;
+  }
+  .lobby-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .lobby-user {
+    gap: 8px;
+  }
+  .lobby-username {
+    font-size: 14px;
+  }
+  .lobby-rating {
+    font-size: 12px;
+  }
+  .time-controls {
+    gap: 6px;
+  }
+  .tc-btn {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+  .history-row {
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  .lb-table {
+    font-size: 12px;
+  }
+  .lb-table th, .lb-table td {
+    padding: 5px 6px;
   }
 }

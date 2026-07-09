@@ -4,6 +4,7 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 20px;
 }
 
@@ -61,6 +62,7 @@
 .auth-form {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .auth-error {
@@ -68,4 +70,22 @@
   font-size: 13px;
   text-align: center;
   margin-top: 16px;
+}
+
+/* ────────── Responsive ────────── */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 28px 20px 24px;
+  }
+  .auth-logo {
+    font-size: 40px;
+  }
+  .auth-title {
+    font-size: 19px;
+    margin-bottom: 20px;
+  }
+  .field input {
+    padding: 9px 10px;
+    font-size: 16px; /* prevent iOS zoom */
+  }
 }
