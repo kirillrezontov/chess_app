@@ -14,6 +14,11 @@ export function LobbyScreen() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchStartRef = useRef<number>(0);
+  const consecutiveErrorsRef = useRef<number>(0);
+
+  const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
+  const MAX_CONSECUTIVE_ERRORS = 5;
 
   const loadHistory = useCallback(async () => {
     try {
@@ -49,21 +54,68 @@ export function LobbyScreen() {
   const startSearch = useCallback(async () => {
     setSearching(true);
     setQueueError('');
+    searchStartRef.current = Date.now();
+    consecutiveErrorsRef.current = 0;
+
     try {
       const data = await queue.join({
         initial_time_sec: selectedTC.initialSec,
         increment_sec: selectedTC.incrementSec,
       });
+
       pollRef.current = setInterval(async () => {
+        // --- Safety: search timeout ---
+        if (Date.now() - searchStartRef.current > SEARCH_TIMEOUT_MS) {
+          console.warn('[Lobby] search timed out after', SEARCH_TIMEOUT_MS / 1000, 's');
+          stopPolling();
+          setSearching(false);
+          setQueueError('Search timed out — no opponent found. Please try again.');
+          return;
+        }
+
         try {
           const status = await queue.status(data.ticket_id);
-          if (status.status === 'matched' && status.game_id) {
-            stopPolling();
-            setGameId(status.game_id);
-            setSearching(false);
-            setScreen('game');
+          consecutiveErrorsRef.current = 0; // reset on success
+
+          if (status.status === 'matched') {
+            const gid = status.game_id;
+            if (typeof gid === 'number' && gid > 0) {
+              stopPolling();
+              setGameId(gid);
+              setSearching(false);
+              setScreen('game');
+            } else {
+              // Matched but game_id missing — server-side issue
+              console.error('[Lobby] matched but invalid game_id:', gid);
+              stopPolling();
+              setSearching(false);
+              setQueueError('Match found but game failed to create. Please try again.');
+            }
           }
-        } catch { /* retry next tick */ }
+        } catch (err: unknown) {
+          consecutiveErrorsRef.current++;
+          const isApiErr = err && typeof err === 'object' && 'status' in err;
+          const httpStatus = isApiErr ? (err as { status: number }).status : 0;
+
+          // 404 = ticket lost (server restart), stop immediately
+          if (httpStatus === 404) {
+            console.error('[Lobby] ticket not found (server may have restarted)');
+            stopPolling();
+            setSearching(false);
+            setQueueError('Search ticket lost — server may have restarted. Please try again.');
+            return;
+          }
+
+          console.warn('[Lobby] poll error:', consecutiveErrorsRef.current, err);
+
+          // Too many consecutive failures — give up
+          if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+            console.error('[Lobby] too many consecutive poll errors, stopping search');
+            stopPolling();
+            setSearching(false);
+            setQueueError('Connection issues — could not reach server. Please try again.');
+          }
+        }
       }, 800);
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Failed to join queue');

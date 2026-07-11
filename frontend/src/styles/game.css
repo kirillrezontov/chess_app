@@ -72,19 +72,19 @@
   background: rgba(155, 199, 0, 0.41) !important;
 }
 
-/* ────────── Check highlight (red radial gradient) ────────── */
-.sq-check::after {
-  content: '';
+/* ────────── Check glow overlay on the checked king's square ────────── */
+.check-glow {
   position: absolute;
   inset: 0;
   background: radial-gradient(
-    ellipse at center,
-    rgba(255, 0, 0, 1) 0%,
-    rgba(231, 0, 0, 1) 25%,
-    rgba(169, 0, 0, 0) 89%
+    circle at center,
+    rgba(255, 120, 0, 0.6) 0%,
+    rgba(255, 80, 0, 0.3) 40%,
+    rgba(255, 60, 0, 0) 75%
   );
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
+  border-radius: 0;
 }
 
 /* ────────── Checkmate glow overlay on king square ────────── */
@@ -100,11 +100,6 @@
   pointer-events: none;
   z-index: 3;
   border-radius: 0;
-}
-
-/* Piece glow during checkmate animation */
-.piece-checkmate-glow {
-  z-index: 4;
 }
 
 /* ────────── Legal move dots ────────── */

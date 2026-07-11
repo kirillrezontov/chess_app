@@ -168,6 +168,7 @@ export function GameScreen() {
           fen={state.fen}
           turn={state.turn}
           inCheck={state.inCheck}
+          status={state.status}
           lastMove={state.lastMove}
           selectedSquare={selectedSquare}
           myColor={myColor}

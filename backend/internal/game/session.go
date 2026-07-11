@@ -260,7 +260,11 @@ func (s *Session) handleMove(req MoveRequest) {
         }
         promo := parsePromotion(req.Promotion)
 
-        if err := s.board.ApplyMove(engine.Move{From: from, To: to, Promotion: promo}); err != nil {
+        // Read the moving piece BEFORE ApplyMove mutates the board
+        movingPiece := s.board.At(from)
+
+        applied, err := s.board.ApplyMove(engine.Move{From: from, To: to, Promotion: promo})
+        if err != nil {
                 req.ReplyCh <- MoveResult{OK: false, Error: err.Error()}
                 return
         }
@@ -271,8 +275,9 @@ func (s *Session) handleMove(req MoveRequest) {
         s.drawOfferedColor = ""
         s.mu.Unlock()
 
-        s.moveLog = append(s.moveLog, req.From+req.To)
-        s.store.RecordMove(s.ID, s.board.FullmoveNum, req.From+req.To, s.board.FEN())
+        notation := formatMoveNotation(movingPiece.Type, applied, req.From, req.To)
+        s.moveLog = append(s.moveLog, notation)
+        s.store.RecordMove(s.ID, s.board.FullmoveNum, notation, s.board.FEN())
 
         s.lastMove = &LastMove{From: req.From, To: req.To}
 
@@ -525,4 +530,53 @@ func parsePromotion(p string) engine.PieceType {
 // lastMove, so reconnecting clients see the move highlight.
 func (s *Session) CurrentSnapshot() Snapshot {
         return s.snapshot(s.lastMove)
+}
+
+// formatMoveNotation builds a human-readable move string from the applied move.
+// Examples: "e4", "Nf3", "Bxe5", "exd6" (en passant), "O-O", "e8=Q".
+func formatMoveNotation(movedType engine.PieceType, m engine.Move, fromStr, toStr string) string {
+        if m.IsCastle {
+                if m.To.File() == 6 {
+                        return "O-O"
+                }
+                return "O-O-O"
+        }
+
+        isCapture := m.Captured != engine.Empty || m.IsEnPassant
+
+        var buf []byte
+
+        if movedType != engine.Pawn {
+                buf = append(buf, pieceTypeLetter(movedType))
+        } else if isCapture {
+                buf = append(buf, fromStr[0])
+        }
+
+        if isCapture {
+                buf = append(buf, 'x')
+        }
+        buf = append(buf, toStr...)
+
+        if m.Promotion != engine.Empty {
+                buf = append(buf, '=', pieceTypeLetter(m.Promotion))
+        }
+
+        return string(buf)
+}
+
+func pieceTypeLetter(pt engine.PieceType) byte {
+        switch pt {
+        case engine.Knight:
+                return 'N'
+        case engine.Bishop:
+                return 'B'
+        case engine.Rook:
+                return 'R'
+        case engine.Queen:
+                return 'Q'
+        case engine.King:
+                return 'K'
+        default:
+                return 0
+        }
 }

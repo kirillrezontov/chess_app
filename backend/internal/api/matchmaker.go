@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ type ticket struct {
 	IncrementSec   int
 	Status         ticketStatus
 	GameID         int64
+	CreatedAt      time.Time
 }
 
 // Matchmaker runs its own goroutine that periodically pairs waiting tickets
@@ -43,6 +45,7 @@ func NewMatchmaker(s *store.Store, r *game.Registry) *Matchmaker {
 		registry: r,
 	}
 	go m.loop()
+	go m.cleanupLoop()
 	return m
 }
 
@@ -53,6 +56,7 @@ func (m *Matchmaker) Enqueue(userID int64, initialSec, incSec int) *ticket {
 		InitialTimeSec: initialSec,
 		IncrementSec:   incSec,
 		Status:         ticketWaiting,
+		CreatedAt:      time.Now(),
 	}
 	m.mu.Lock()
 	m.waiting = append(m.waiting, t)
@@ -79,6 +83,25 @@ func (m *Matchmaker) loop() {
 	}
 }
 
+// cleanupLoop removes stale tickets (waiting >5 min, matched >30 s) from byID
+// to prevent unbounded memory growth.
+func (m *Matchmaker) cleanupLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.mu.Lock()
+		for id, t := range m.byID {
+			age := time.Since(t.CreatedAt)
+			if t.Status == ticketMatched && age > 30*time.Second {
+				delete(m.byID, id)
+			} else if t.Status == ticketWaiting && age > 5*time.Minute {
+				delete(m.byID, id)
+			}
+		}
+		m.mu.Unlock()
+	}
+}
+
 func (m *Matchmaker) tryMatch() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -99,13 +122,25 @@ func (m *Matchmaker) tryMatch() {
 			if a.InitialTimeSec != b.InitialTimeSec || a.IncrementSec != b.IncrementSec {
 				continue
 			}
-			gameID, err := m.store.CreateGame(a.UserID, b.UserID, a.InitialTimeSec, a.IncrementSec)
+
+			var coin [1]byte
+			rand.Read(coin[:])
+			whiteTicket, blackTicket := a, b
+			if coin[0]%2 == 1 {
+				whiteTicket, blackTicket = b, a
+			}
+			gameID, err := m.store.CreateGame(whiteTicket.UserID, blackTicket.UserID, whiteTicket.InitialTimeSec, whiteTicket.IncrementSec)
 			if err != nil {
+				log.Printf("[matchmaker] CreateGame failed for users %d/%d: %v", whiteTicket.UserID, blackTicket.UserID, err)
 				continue
 			}
-			m.registry.Start(gameID, a.UserID, b.UserID,
-				time.Duration(a.InitialTimeSec)*time.Second,
-				time.Duration(a.IncrementSec)*time.Second,
+			if gameID <= 0 {
+				log.Printf("[matchmaker] CreateGame returned invalid gameID=%d for users %d/%d", gameID, whiteTicket.UserID, blackTicket.UserID)
+				continue
+			}
+			m.registry.Start(gameID, whiteTicket.UserID, blackTicket.UserID,
+				time.Duration(whiteTicket.InitialTimeSec)*time.Second,
+				time.Duration(whiteTicket.IncrementSec)*time.Second,
 				m.store,
 			)
 			a.Status, a.GameID = ticketMatched, gameID
