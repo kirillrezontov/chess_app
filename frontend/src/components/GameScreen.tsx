@@ -18,7 +18,7 @@ interface PendingPromo {
 }
 
 export function GameScreen() {
-  const { token, username, myColor, setMyColor, gameId, setScreen } = useAuth();
+  const { token, username, myColor, setMyColor, gameId, setScreen, setReviewGameId } = useAuth();
   const { state, displayClocks, legalTargets, send } = useGameWebSocket(gameId, token);
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
@@ -120,7 +120,12 @@ export function GameScreen() {
     setScreen('lobby');
   }, [setScreen]);
 
+  const handleViewResult = useCallback(() => {
+    if (gameId) setReviewGameId(gameId);
+  }, [gameId, setReviewGameId]);
+
   const gameOver = state.outcome !== '';
+  const gameUnavailable = state.gameEndedOnServer && !state.connected;
 
   // Determine if opponent offered a draw (draw_offered is the opponent's color)
   const opponentOfferedDraw = state.drawOffered && state.drawOffered !== myColor;
@@ -196,6 +201,16 @@ export function GameScreen() {
             transition={{ duration: 0.2 }}
           >
             {statusText}
+            {gameUnavailable && (
+              <button
+                className="btn btn-outline"
+                style={{ marginLeft: 10, fontSize: 12, padding: '4px 10px' }}
+                onClick={handleViewResult}
+                type="button"
+              >
+                View Result
+              </button>
+            )}
           </motion.div>
 
           <ClockBar

@@ -2,6 +2,18 @@
 docker compose down
 docker compose up -d --build
 
+# Apply any new schema migrations (IF NOT EXISTS is safe to re-run)
+sleep 3
+docker compose exec -T db psql -U chess -c "
+CREATE TABLE IF NOT EXISTS friendships (
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    friend_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, friend_id),
+    CHECK (user_id < friend_id)
+);
+" 2>/dev/null
+
 echo ""
 echo "========================================"
 echo "  Ждём ссылку Cloudflare Tunnel..."

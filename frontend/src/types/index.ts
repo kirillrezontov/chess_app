@@ -44,16 +44,19 @@ export interface GameInfo {
   id: number;
   your_color: 'white' | 'black';
   opponent_username: string;
+  status: string;
   outcome: string;
   initial_time_sec: number;
   increment_sec: number;
   created_at?: string;
+  final_fen?: string;
 }
 
 export interface HistoryEntry {
   id: number;
   your_color: 'white' | 'black';
   opponent_username: string;
+  status: string;
   outcome: string;
   initial_time_sec: number;
   increment_sec: number;
@@ -128,13 +131,31 @@ export type ClientMessage = ClientMoveMessage | ClientActionMessage | ClientDraw
 
 export type Color = 'white' | 'black';
 
-export type AppScreen = 'auth' | 'lobby' | 'game';
+export type AppScreen = 'auth' | 'lobby' | 'game' | 'review';
 
 export type TimeControl = {
   label: string;
   initialSec: number;
   incrementSec: number;
 };
+
+export interface FriendEntry {
+  username: string;
+  rating: number;
+}
+
+export interface GameReviewMove {
+  ply: string;
+  fen_after: string;
+}
+
+export interface GameReviewData {
+  moves: GameReviewMove[];
+  your_color: 'white' | 'black';
+  fen: string;
+  opponent: string;
+  outcome: string;
+}
 
 export const TIME_CONTROLS: TimeControl[] = [
   { label: '1+0', initialSec: 60, incrementSec: 0 },

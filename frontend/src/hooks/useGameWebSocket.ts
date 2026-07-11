@@ -21,6 +21,7 @@ export interface GameState {
   error: string | null;
   drawOffered: string | null;
   loserKingSq: string | null;
+  gameEndedOnServer: boolean; // true when WS fails because game is no longer in registry
 }
 
 export interface LegalTargets {
@@ -43,6 +44,7 @@ const INITIAL: GameState = {
   error: null,
   drawOffered: null,
   loserKingSq: null,
+  gameEndedOnServer: false,
 };
 
 function snapshotToState(snap: ServerSnapshot): GameState {
@@ -60,6 +62,7 @@ function snapshotToState(snap: ServerSnapshot): GameState {
     error: null,
     drawOffered: snap.draw_offered ?? null,
     loserKingSq: snap.loser_king_sq ?? null,
+    gameEndedOnServer: false,
   };
 }
 
@@ -109,7 +112,7 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
     if (!gameId || !token) return;
 
     hasConnected.current = false;
-    setState(prev => ({ ...prev, connected: false, error: null }));
+    setState(prev => ({ ...prev, connected: false, error: null, gameEndedOnServer: false }));
     setLegalTargets(null);
     clockRef.current = null;
 
@@ -167,6 +170,8 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
         error: hasConnected.current
           ? 'Connection lost'
           : 'Failed to connect — game may not exist',
+        // If we never connected, the game session likely doesn't exist (finished or server restarted)
+        gameEndedOnServer: !hasConnected.current,
       }));
     };
 
@@ -176,7 +181,8 @@ export function useGameWebSocket(gameId: number | null, token: string | null) {
         setState(prev => ({
           ...prev,
           connected: false,
-          error: `Connection refused (code ${e.code}). Check that the game was created successfully.`,
+          error: `Connection refused (code ${e.code}). The game may have ended.`,
+          gameEndedOnServer: true,
         }));
       } else {
         setState(prev => ({ ...prev, connected: false }));

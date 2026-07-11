@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { queue, games } from '@/api/client';
-import { TIME_CONTROLS, type TimeControl, type HistoryEntry, type LeaderboardEntry } from '@/types';
+import { queue, games, friends } from '@/api/client';
+import { TIME_CONTROLS, type TimeControl, type HistoryEntry, type LeaderboardEntry, type FriendEntry } from '@/types';
 import '@/styles/lobby.css';
 
 export function LobbyScreen() {
-  const { username, rating, setScreen, setGameId, logout, refreshMe } = useAuth();
+  const { username, rating, setScreen, setGameId, setReviewGameId, logout, refreshMe } = useAuth();
 
   const [selectedTC, setSelectedTC] = useState<TimeControl>(TIME_CONTROLS[2]);
   const [searching, setSearching] = useState(false);
@@ -17,7 +17,18 @@ export function LobbyScreen() {
   const searchStartRef = useRef<number>(0);
   const consecutiveErrorsRef = useRef<number>(0);
 
-  const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
+  // Friends state
+  const [friendList, setFriendList] = useState<FriendEntry[]>([]);
+  const [friendSearch, setFriendSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<FriendEntry[]>([]);
+  const [showFriendSearch, setShowFriendSearch] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
+  const [inviteFriend, setInviteFriend] = useState<string | null>(null);
+  const [inviteTC, setInviteTC] = useState<TimeControl>(TIME_CONTROLS[2]);
+  const [friendError, setFriendError] = useState('');
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+
+  const SEARCH_TIMEOUT_MS = 120_000;
   const MAX_CONSECUTIVE_ERRORS = 5;
 
   const loadHistory = useCallback(async () => {
@@ -38,10 +49,20 @@ export function LobbyScreen() {
     }
   }, []);
 
+  const loadFriends = useCallback(async () => {
+    try {
+      const data = await friends.list();
+      setFriendList(data || []);
+    } catch (e) {
+      console.error('[Lobby] failed to load friends:', e);
+    }
+  }, []);
+
   useEffect(() => {
     refreshMe();
     loadHistory();
     loadLeaderboard();
+    loadFriends();
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -64,7 +85,6 @@ export function LobbyScreen() {
       });
 
       pollRef.current = setInterval(async () => {
-        // --- Safety: search timeout ---
         if (Date.now() - searchStartRef.current > SEARCH_TIMEOUT_MS) {
           console.warn('[Lobby] search timed out after', SEARCH_TIMEOUT_MS / 1000, 's');
           stopPolling();
@@ -75,7 +95,7 @@ export function LobbyScreen() {
 
         try {
           const status = await queue.status(data.ticket_id);
-          consecutiveErrorsRef.current = 0; // reset on success
+          consecutiveErrorsRef.current = 0;
 
           if (status.status === 'matched') {
             const gid = status.game_id;
@@ -85,7 +105,6 @@ export function LobbyScreen() {
               setSearching(false);
               setScreen('game');
             } else {
-              // Matched but game_id missing — server-side issue
               console.error('[Lobby] matched but invalid game_id:', gid);
               stopPolling();
               setSearching(false);
@@ -97,7 +116,6 @@ export function LobbyScreen() {
           const isApiErr = err && typeof err === 'object' && 'status' in err;
           const httpStatus = isApiErr ? (err as { status: number }).status : 0;
 
-          // 404 = ticket lost (server restart), stop immediately
           if (httpStatus === 404) {
             console.error('[Lobby] ticket not found (server may have restarted)');
             stopPolling();
@@ -108,7 +126,6 @@ export function LobbyScreen() {
 
           console.warn('[Lobby] poll error:', consecutiveErrorsRef.current, err);
 
-          // Too many consecutive failures — give up
           if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
             console.error('[Lobby] too many consecutive poll errors, stopping search');
             stopPolling();
@@ -131,13 +148,78 @@ export function LobbyScreen() {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // Friend search with debounce
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!friendSearch || friendSearch.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await friends.search(friendSearch);
+        // Filter out existing friends
+        const friendNames = new Set(friendList.map(f => f.username));
+        setSearchResults((res || []).filter(r => !friendNames.has(r.username)));
+      } catch { /* ignore */ }
+    }, 300);
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, [friendSearch, friendList]);
+
+  const handleAddFriend = async (name: string) => {
+    try {
+      await friends.add(name);
+      setFriendSearch('');
+      setSearchResults([]);
+      loadFriends();
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message || 'Failed to add friend';
+      setFriendError(msg);
+      setTimeout(() => setFriendError(''), 3000);
+    }
+  };
+
+  const handleRemoveFriend = async (name: string) => {
+    try {
+      await friends.remove(name);
+      loadFriends();
+    } catch (e) {
+      console.error('[Lobby] remove friend error:', e);
+    }
+  };
+
+  const handleInviteFriend = async (friendName: string) => {
+    try {
+      const res = await friends.invite(friendName, inviteTC.initialSec, inviteTC.incrementSec);
+      setShowInviteDialog(false);
+      setInviteFriend(null);
+      setGameId(res.game_id);
+      setScreen('game');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message || 'Failed to invite friend';
+      setFriendError(msg);
+      setTimeout(() => setFriendError(''), 3000);
+    }
+  };
+
+  const handleHistoryClick = (g: HistoryEntry) => {
+    if (g.status === 'in_progress') {
+      setGameId(g.id);
+      setScreen('game');
+    } else {
+      setReviewGameId(g.id);
+    }
+  };
+
   const renderGameResult = (g: HistoryEntry) => {
+    if (g.status === 'in_progress') return <span className="result in-progress">In progress</span>;
     if (g.outcome === 'draw') return <span className="result draw">Draw</span>;
 
     const winnerColor = g.outcome === 'white_win' ? 'white' : 'black';
     const isWin = g.your_color === winnerColor;
 
-    if (!g.outcome) return <span className="result">In progress</span>;
+    if (!g.outcome) return <span className="result">—</span>;
 
     return (
       <span className={`result ${isWin ? 'win' : 'loss'}`}>
@@ -234,6 +316,155 @@ export function LobbyScreen() {
         </motion.section>
 
         <aside className="lobby-sidebar">
+          {/* Friends */}
+          <motion.section
+            className="card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
+          >
+            <div className="card-title-row">
+              <h2 className="card-title" style={{ marginBottom: 0 }}>Friends ({friendList.length})</h2>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setShowFriends(!showFriends); setShowFriendSearch(false); }}
+                type="button"
+              >
+                {showFriends ? '▲' : '▼'}
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {showFriends && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  {friendError && <p className="field-error" style={{ marginTop: 8, marginBottom: 8 }}>{friendError}</p>}
+
+                  {/* Add friend search */}
+                  <div className="friend-search-row">
+                    <input
+                      className="friend-search-input"
+                      type="text"
+                      placeholder="Search username…"
+                      value={friendSearch}
+                      onChange={e => { setFriendSearch(e.target.value); setShowFriendSearch(true); }}
+                      onFocus={() => setShowFriendSearch(true)}
+                    />
+                  </div>
+
+                  {/* Search results dropdown */}
+                  <AnimatePresence>
+                    {showFriendSearch && searchResults.length > 0 && (
+                      <motion.div
+                        className="friend-search-dropdown"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                      >
+                        {searchResults.map(r => (
+                          <button
+                            key={r.username}
+                            className="friend-search-item"
+                            onClick={() => handleAddFriend(r.username)}
+                            type="button"
+                          >
+                            <span>{r.username}</span>
+                            <span className="friend-search-rating">{r.rating}</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Friends list */}
+                  {friendList.length === 0 ? (
+                    <p className="empty-text" style={{ marginTop: 8 }}>No friends yet. Search above to add.</p>
+                  ) : (
+                    <div className="friends-list">
+                      {friendList.map(f => (
+                        <div key={f.username} className="friend-row">
+                          <span className="friend-name">{f.username} <span className="friend-rating">{f.rating}</span></span>
+                          <div className="friend-actions">
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => { setInviteFriend(f.username); setShowInviteDialog(true); }}
+                              type="button"
+                              title="Invite to game"
+                            >
+                              ⚔
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => handleRemoveFriend(f.username)}
+                              type="button"
+                              title="Remove friend"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
+
+          {/* Invite dialog */}
+          <AnimatePresence>
+            {showInviteDialog && inviteFriend && (
+              <div className="invite-overlay" onClick={() => setShowInviteDialog(false)}>
+                <motion.div
+                  className="invite-dialog card"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 12 }}>
+                    Invite {inviteFriend}
+                  </h3>
+                  <div className="time-controls" style={{ marginBottom: 16 }}>
+                    {TIME_CONTROLS.map(tc => (
+                      <button
+                        key={tc.label}
+                        className={`tc-btn ${inviteTC.label === tc.label ? 'active' : ''}`}
+                        onClick={() => setInviteTC(tc)}
+                        type="button"
+                      >
+                        {tc.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1 }}
+                      onClick={() => handleInviteFriend(inviteFriend)}
+                      type="button"
+                    >
+                      Invite
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      style={{ flex: 1 }}
+                      onClick={() => setShowInviteDialog(false)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* Recent Games */}
           <motion.section
             className="card"
             initial={{ opacity: 0, y: 20 }}
@@ -246,7 +477,12 @@ export function LobbyScreen() {
             ) : (
               <div className="history-list">
                 {history.slice(0, 15).map(g => (
-                  <div key={g.id} className="history-row">
+                  <button
+                    key={g.id}
+                    className={`history-row ${g.status === 'in_progress' ? 'history-row-clickable' : ''}`}
+                    onClick={() => handleHistoryClick(g)}
+                    type="button"
+                  >
                     <span className="history-opponents">
                       {g.opponent_username || '?'} ({g.your_color === 'white' ? '⬜' : '⬛'})
                     </span>
@@ -254,12 +490,13 @@ export function LobbyScreen() {
                       {formatTimeControl(g.initial_time_sec, g.increment_sec)}
                     </span>
                     {renderGameResult(g)}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </motion.section>
 
+          {/* Leaderboard */}
           <motion.section
             className="card"
             initial={{ opacity: 0, y: 20 }}

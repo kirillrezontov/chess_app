@@ -9,6 +9,8 @@ import type {
   GameInfo,
   HistoryEntry,
   LeaderboardEntry,
+  FriendEntry,
+  GameReviewData,
 } from '@/types';
 
 const BASE_URL = '';
@@ -90,11 +92,34 @@ export const games = {
   get(id: number): Promise<GameInfo> {
     return request<GameInfo>('GET', `/api/games/${id}`);
   },
+  getMoves(id: number): Promise<GameReviewData> {
+    return request<GameReviewData>('GET', `/api/games/${id}/moves`);
+  },
   history(): Promise<HistoryEntry[]> {
     return request<HistoryEntry[]>('GET', '/api/history');
   },
   leaderboard(): Promise<LeaderboardEntry[]> {
     return request<LeaderboardEntry[]>('GET', '/api/leaderboard');
+  },
+};
+
+/* ────────── Friends ────────── */
+
+export const friends = {
+  list(): Promise<FriendEntry[]> {
+    return request<FriendEntry[]>('GET', '/api/friends');
+  },
+  add(username: string): Promise<void> {
+    return request<void>('POST', '/api/friends', { username });
+  },
+  remove(username: string): Promise<void> {
+    return request<void>('DELETE', '/api/friends', { username });
+  },
+  search(query: string): Promise<FriendEntry[]> {
+    return request<FriendEntry[]>('GET', `/api/friends/search?q=${encodeURIComponent(query)}`);
+  },
+  invite(username: string, initialTimeSec: number, incrementSec: number): Promise<{ game_id: number; your_color: string }> {
+    return request<{ game_id: number; your_color: string }>('POST', '/api/friends/invite', { username, initial_time_sec: initialTimeSec, increment_sec: incrementSec });
   },
 };
 

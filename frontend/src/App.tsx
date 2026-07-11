@@ -2,6 +2,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AuthScreen } from '@/components/AuthScreen';
 import { LobbyScreen } from '@/components/LobbyScreen';
 import { GameScreen } from '@/components/GameScreen';
+import { GameReviewScreen } from '@/components/GameReviewScreen';
 
 function AppRouter() {
   const { screen } = useAuth();
@@ -13,6 +14,8 @@ function AppRouter() {
       return <LobbyScreen />;
     case 'game':
       return <GameScreen />;
+    case 'review':
+      return <GameReviewScreen />;
     default:
       return <AuthScreen />;
   }

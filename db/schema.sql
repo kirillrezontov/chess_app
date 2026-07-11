@@ -87,3 +87,16 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_tickets (status);
+
+-- Friendships: mutual relationship stored in both directions.
+-- user_id < friend_id is always enforced to avoid duplicates.
+CREATE TABLE IF NOT EXISTS friendships (
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    friend_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, friend_id),
+    CHECK (user_id < friend_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_friendships_user ON friendships (user_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_friend ON friendships (friend_id);

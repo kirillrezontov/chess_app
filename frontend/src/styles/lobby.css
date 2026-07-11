@@ -110,6 +110,13 @@
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
+  background: none;
+  border: none;
+  width: 100%;
+  color: var(--text);
+  font-family: inherit;
+  cursor: default;
+  text-align: left;
 }
 .history-row:last-child {
   border-bottom: none;
@@ -155,6 +162,144 @@
 .rating-cell {
   font-weight: 700;
   color: var(--text-bright);
+}
+
+/* ────────── Friends ────────── */
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.friend-search-row {
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.friend-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.friend-search-input:focus {
+  border-color: var(--accent);
+}
+.friend-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.friend-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 180px;
+  overflow-y: auto;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.friend-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.friend-search-item:hover {
+  background: var(--surface-hover);
+}
+
+.friend-search-rating {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.friends-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.friend-row:last-child {
+  border-bottom: none;
+}
+
+.friend-name {
+  color: var(--text);
+}
+
+.friend-rating {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.friend-actions {
+  display: flex;
+  gap: 2px;
+}
+
+/* ────────── Invite Dialog ────────── */
+
+.invite-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.invite-dialog {
+  width: 340px;
+  padding: 24px;
+}
+
+/* ────────── History clickable ────────── */
+
+.history-row-clickable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.history-row-clickable:hover {
+  background: var(--surface-hover);
+}
+
+.result.in-progress {
+  color: var(--orange);
+  text-align: end;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 /* ────────── Responsive ────────── */

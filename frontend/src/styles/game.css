@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: default;
   transition: filter 0.1s;
   padding: 0;
   font-family: inherit;
@@ -282,6 +282,37 @@
 }
 .move-w, .move-b {
   color: var(--text);
+}
+
+.move-active {
+  background: rgba(34, 217, 127, 0.15);
+  color: var(--accent) !important;
+  border-radius: 3px;
+}
+
+.move-clickable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.move-clickable:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ────────── Review Navigation ────────── */
+.review-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.review-step-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  min-width: 60px;
+  text-align: center;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 /* ────────── Promotion Dialog ────────── */

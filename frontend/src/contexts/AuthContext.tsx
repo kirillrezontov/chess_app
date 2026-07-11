@@ -22,6 +22,8 @@ interface AuthContextValue {
   setMyColor: (c: Color | null) => void;
   gameId: number | null;
   setGameId: (id: number) => void;
+  reviewGameId: number | null;
+  setReviewGameId: (id: number) => void;
   login: (username: string, password: string) => Promise<void>;
   register: (
     username: string,
@@ -106,12 +108,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clear();
   }, [clear]);
 
+  // Review game state (not persisted — only for viewing finished games)
+  const [reviewGameId, setReviewGameIdRaw] = useState<number | null>(null);
+
   // setGameId also persists, clears old color, and switches screen
   const setGameId = useCallback((id: number) => {
     save('game_id', String(id));
     remove('my_color');
     setGameIdRaw(id);
     setMyColorRaw(null);
+    setReviewGameIdRaw(null);
     setScreenRaw('game');
   }, []);
 
@@ -133,7 +139,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGameIdRaw(null);
       setMyColorRaw(null);
     }
+    if (s !== 'review') {
+      setReviewGameIdRaw(null);
+    }
     setScreenRaw(s);
+  }, []);
+
+  const setReviewGameId = useCallback((id: number) => {
+    setReviewGameIdRaw(id);
+    setGameIdRaw(null);
+    setMyColorRaw(null);
+    setScreenRaw('review');
   }, []);
 
   const refreshMe = useCallback(async () => {
@@ -165,6 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMyColor,
         gameId,
         setGameId,
+        reviewGameId,
+        setReviewGameId,
         login,
         register,
         logout,
